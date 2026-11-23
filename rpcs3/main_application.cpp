@@ -443,6 +443,12 @@ void main_application::create_callbacks()
 			}
 			font_dirs.push_back(std::move(font_dir));
 		}
+#ifdef __APPLE__
+		if (std::find(font_dirs.begin(), font_dirs.end(), "/System/Library/Fonts/Supplemental/") == font_dirs.end())
+		{
+			font_dirs.emplace_back("/System/Library/Fonts/Supplemental/");
+		}
+#endif
 		return font_dirs;
 	};
 
