@@ -16,6 +16,8 @@
 
 #if defined(__APPLE__)
 #include <mutex>
+#include <sys/mman.h>
+#include <libkern/OSCacheControl.h>
 #endif
 
 LOG_CHANNEL(jit_log, "JIT");
@@ -320,8 +322,35 @@ void jit_runtime::initialize()
 void jit_runtime::finalize() noexcept
 {
 #ifdef __APPLE__
+	const u64 code_committed = s_code_pos.load() >> 32;
+	const u64 data_committed = s_data_pos.load() >> 32;
+
 	pthread_jit_write_protect_np(false);
-#endif
+
+	if (u8* const base = get_jit_memory(false))
+	{
+		if (code_committed)
+		{
+			std::memset(base, 0, code_committed);
+			::madvise(base, code_committed, MADV_FREE);
+		}
+		if (data_committed)
+		{
+			std::memset(base + 0x40000000, 0, data_committed);
+			::madvise(base + 0x40000000, data_committed, MADV_FREE);
+		}
+	}
+
+	s_code_pos = code_committed << 32;
+	s_data_pos = data_committed << 32;
+
+	u8* const code_dst = alloc(s_code_init.size(), 1, true);
+	std::memcpy(code_dst, s_code_init.data(), s_code_init.size());
+	sys_icache_invalidate(code_dst, s_code_init.size());
+	std::memcpy(alloc(s_data_init.size(), 1, false), s_data_init.data(), s_data_init.size());
+
+	pthread_jit_write_protect_np(true);
+#else
 	// Reset JIT memory
 	get_jit_memory(true);
 
@@ -331,9 +360,6 @@ void jit_runtime::finalize() noexcept
 	// Restore code/data snapshot
 	std::memcpy(alloc(s_code_init.size(), 1, true), s_code_init.data(), s_code_init.size());
 	std::memcpy(alloc(s_data_init.size(), 1, false), s_data_init.data(), s_data_init.size());
-
-#ifdef __APPLE__
-	pthread_jit_write_protect_np(true);
 #endif
 #ifdef ARCH_ARM64
 	// Flush all cache lines after potentially writing executable code
