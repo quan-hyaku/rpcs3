@@ -11,6 +11,7 @@
 
 #include "Emu/System.h"
 #include "Emu/system_utils.hpp"
+#include "Loader/ISO.h"
 
 #include "Input/pad_thread.h"
 
@@ -1147,7 +1148,8 @@ bool game_list_actions::CreateCPUCaches(const std::string& path, const std::stri
 	Emu.SetForceBoot(true);
 	Emu.SetPrecompileCacheOption(emu_precompilation_option_t{.is_fast = is_fast_compilation});
 
-	if (const auto error = Emu.BootGame(fs::is_file(path) ? fs::get_parent_dir(path) : path, serial, true); error != game_boot_result::no_errors)
+	const std::string boot_path = (fs::is_file(path) && !is_iso_file(path)) ? fs::get_parent_dir(path) : path;
+	if (const auto error = Emu.BootGame(boot_path, serial, true); error != game_boot_result::no_errors)
 	{
 		game_list_log.error("Could not create LLVM caches for %s, error: %s", path, error);
 		return false;
